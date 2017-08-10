@@ -7,8 +7,12 @@
 //
 
 #import "ViewController.h"
+#import "YBUploadView.h"
+
 
 @interface ViewController ()
+
+@property (weak, nonatomic) IBOutlet YBUploadView *uploadView;
 
 @end
 
@@ -16,7 +20,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    // Do any additional setup after loading the view, typically from a nib.
+    
 }
 
 

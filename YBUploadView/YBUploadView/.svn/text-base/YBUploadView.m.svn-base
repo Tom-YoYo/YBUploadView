@@ -1,0 +1,236 @@
+//
+//  YBUploadView.m
+//  YBUploadView
+//
+//  Created by 尚往文化 on 17/5/31.
+//  Copyright © 2017年 YBing. All rights reserved.
+//
+
+#import "YBUploadView.h"
+#import "YBUploadCell.h"
+#import "UIImage+Barrage.h"
+#import "ZLCameraViewController.h"
+#import <AssetsLibrary/AssetsLibrary.h>
+
+@interface YBUploadView ()<UICollectionViewDelegate, UICollectionViewDataSource, UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIActionSheetDelegate>
+
+@property (nonatomic, strong) UICollectionView *collectionView;
+@property (nonatomic, strong) NSMutableArray<id> *data_images;
+
+@property (strong,nonatomic)   ZLCameraViewController *cameraVc;
+
+@end
+
+@implementation YBUploadView
+
+- (NSMutableArray<id> *)data_images
+{
+    if (_data_images==nil) {
+        _data_images = [NSMutableArray array];
+    }
+    return _data_images;
+}
+
+- (void)setImages:(NSArray<id> *)images
+{
+    _data_images = [images mutableCopy];
+    [self.collectionView reloadData];
+}
+
+- (NSArray<id> *)images
+{
+     NSArray *imgs = [self.data_images copy];
+     NSMutableArray *uploadImgs = [NSMutableArray array];
+     [imgs enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+          if ([obj isKindOfClass:[UIImage class]]) {
+               UIImage *img = obj;
+               CGFloat w = img.size.width;
+               CGFloat h = img.size.height;
+               if (img.size.width>2*kScreenW) {
+                    w = 2*kScreenW;
+                    h = w * img.size.height / img.size.width;
+               }
+               if (h>2*kScreenH) {
+                    h = 2*kScreenH;
+                    w = h * img.size.width / img.size.height;
+               }
+               [uploadImgs addObject:UIImageJPEGRepresentation([img barrageImageScaleToSize:CGSizeMake(w, h)], 0.5)];
+          } else {
+               [uploadImgs addObject:obj];
+          }
+     }];
+     
+     
+     
+    return uploadImgs;
+}
+
+- (void)setEditEnabled:(BOOL)editEnabled
+{
+    _editEnabled = editEnabled;
+    [self.collectionView reloadData];
+}
+
+- (instancetype)initWithFrame:(CGRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self) {
+        [self setupCollectionView];
+        self.maxCount = 9;//默认9张
+        self.editEnabled = YES;
+    }
+    return self;
+}
+
+- (instancetype)initWithCoder:(NSCoder *)aDecoder
+{
+    self = [super initWithCoder:aDecoder];
+    if (self) {
+        [self setupCollectionView];
+        self.maxCount = 9;//默认9张
+        self.editEnabled = YES;
+    }
+    return self;
+}
+
+- (void)setupCollectionView
+{
+    UICollectionViewFlowLayout *flowLayout = [[UICollectionViewFlowLayout alloc] init];
+    flowLayout.itemSize = CGSizeMake(80, 80);
+    flowLayout.minimumLineSpacing = 4;
+    flowLayout.minimumInteritemSpacing = 4;
+    flowLayout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
+    self.collectionView = [[UICollectionView alloc] initWithFrame:self.bounds collectionViewLayout:flowLayout];
+//    self.collectionView = [[UICollectionView alloc] initf];
+//    self.collectionView.collectionViewLayout = flowLayout;
+    self.collectionView.backgroundColor = [UIColor whiteColor];
+    self.collectionView.delegate = self;
+    self.collectionView.dataSource = self;
+    [self.collectionView registerNib:[UINib nibWithNibName:@"YBUploadCell" bundle:nil] forCellWithReuseIdentifier:@"YBUploadCell"];
+    [self addSubview:self.collectionView];
+}
+
++ (instancetype)uploadWithFrame:(CGRect)frame targetVC:(UIViewController *)targetVC
+{
+    return [[self alloc] initWithFrame:frame targetVC:targetVC];
+}
+
+- (instancetype)initWithFrame:(CGRect)frame targetVC:(UIViewController *)targetVC
+{
+    self = [self initWithFrame:frame];
+    if (self) {
+        self.targetVC = targetVC;
+    }
+    return self;
+}
+
+- (NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
+{
+    return 1;
+}
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
+{
+    if (!self.editEnabled) return self.data_images.count;
+    if (self.data_images.count==self.maxCount) return self.maxCount;
+    return self.data_images.count+1;
+}
+
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    YBUploadCell *cell = [collectionView dequeueReusableCellWithReuseIdentifier:@"YBUploadCell" forIndexPath:indexPath];
+    cell.deleteBtn.hidden = !self.editEnabled;
+    if (indexPath.row>=self.data_images.count) {
+        cell.img = nil;
+        cell.deleteBtn.hidden = YES;
+    } else {
+        cell.img = self.data_images[indexPath.row];
+    }
+    __weak typeof(self) weakSelf = self;
+    [cell setDeleteBlock:^(id img) {
+        [[weakSelf mutableArrayValueForKeyPath:@"data_images"] removeObject:img];
+//        [weakSelf.data_images removeObject:img];
+        [weakSelf.collectionView reloadData];
+    }];
+    return cell;
+}
+
+- (BOOL)collectionView:(UICollectionView *)collectionView shouldSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    return YES;
+}
+
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (!_editEnabled) return;
+    if (indexPath.row==self.data_images.count) {//点击加号
+        UIActionSheet *actionSheet = [[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:@"取消" destructiveButtonTitle:nil otherButtonTitles:@"相册选取", @"拍照上传", nil];
+        [actionSheet showInView:self.targetVC.view];
+    }
+}
+
+- (void)selectImg:(UIImagePickerControllerSourceType)sourceType
+{
+    UIImagePickerController *ipc = [[UIImagePickerController alloc] init];
+    ipc.sourceType = sourceType;
+    ipc.delegate = self;
+    ipc.allowsEditing = YES;
+    [self.targetVC presentViewController:ipc animated:YES completion:nil];
+}
+
+- (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex
+{
+    if (buttonIndex==0) {//相册
+//        [self selectImg:UIImagePickerControllerSourceTypePhotoLibrary];
+         
+         
+         ZLCameraViewController *cameraVc = [[ZLCameraViewController alloc] init];
+         cameraVc.maxCount = self.maxCount-self.data_images.count;
+         YBWeakSelf
+         [cameraVc startCameraOrPhotoFileWithViewController:self.targetVC complate:^(id object) {
+              NSMutableArray<UIImage *> *imgs = [NSMutableArray array];
+              [object enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+                   if ([obj isKindOfClass:[NSDictionary class]]) {
+                        [[obj allValues] enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+                             if ([obj isKindOfClass:[UIImage class]]) {
+                                  [imgs addObject:object];
+                             } else {
+                                  [imgs addObject:[UIImage imageWithCGImage:((ALAsset *)obj).defaultRepresentation.fullScreenImage]];
+                             }
+                        }];
+                   }else{
+                        UIImage *image = [UIImage imageWithCGImage:((ALAsset *)obj).defaultRepresentation.fullScreenImage];
+                        [imgs addObject:image];
+                   }
+              }];
+              [[weakSelf mutableArrayValueForKeyPath:@"data_images"] addObjectsFromArray:imgs];
+              [weakSelf.collectionView reloadData];
+              [weakSelf.collectionView scrollToItemAtIndexPath:[NSIndexPath indexPathForRow:weakSelf.data_images.count-1 inSection:0] atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
+         }];
+         
+         
+         self.cameraVc = cameraVc;
+    } else if (buttonIndex==1) {//拍照上传
+        [self selectImg:UIImagePickerControllerSourceTypeCamera];
+    } else {//取消
+        
+    }
+}
+
+- (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info
+{
+    UIImage *img = info[UIImagePickerControllerEditedImage];
+    [[self mutableArrayValueForKeyPath:@"data_images"] addObject:img];
+    [self.collectionView reloadData];
+    
+    [self.collectionView scrollToItemAtIndexPath:[NSIndexPath indexPathForRow:self.data_images.count-1 inSection:0] atScrollPosition:UICollectionViewScrollPositionLeft animated:YES];
+    [picker dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)layoutSubviews
+{
+    [super layoutSubviews];
+    self.collectionView.frame = self.bounds;
+}
+
+@end
